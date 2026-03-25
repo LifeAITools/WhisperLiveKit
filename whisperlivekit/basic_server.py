@@ -1,10 +1,13 @@
 import asyncio
+import base64
 import json
 import logging
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
-from fastapi import FastAPI, File, Form, UploadFile, WebSocket, WebSocketDisconnect
+import numpy as np
+import torch
+from fastapi import FastAPI, File, Form, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
@@ -49,6 +52,32 @@ async def health():
         "backend": backend,
         "ready": transcription_engine is not None,
     })
+
+
+_ecapa_model = None
+
+@app.post("/api/embed")
+async def extract_embedding(request: Request):
+    """Extract ECAPA-TDNN voice embedding from audio."""
+    global _ecapa_model
+    body = await request.json()
+    audio_base64 = body.get("audio")  # base64 PCM 16kHz 16-bit mono
+
+    audio = np.frombuffer(base64.b64decode(audio_base64), dtype=np.int16).astype(np.float32) / 32768.0
+
+    from speechbrain.inference.speaker import EncoderClassifier
+
+    if _ecapa_model is None:
+        _ecapa_model = EncoderClassifier.from_hparams(
+            source="speechbrain/spkrec-ecapa-voxceleb",
+            run_opts={"device": "cpu"},
+        )
+
+    with torch.no_grad():
+        embedding = _ecapa_model.encode_batch(torch.tensor(audio).unsqueeze(0))
+        embedding_list = embedding.squeeze().tolist()
+
+    return {"embedding": embedding_list, "dim": len(embedding_list)}
 
 
 async def handle_websocket_results(websocket, results_generator, diff_tracker=None):
