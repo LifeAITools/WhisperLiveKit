@@ -159,7 +159,7 @@ class Segment(TimedText):
     def to_dict(self) -> Dict[str, Any]:
         """Serialize the segment for frontend consumption."""
         _dict: Dict[str, Any] = {
-            'speaker': int(self.speaker) if self.speaker != -1 else 1,
+            'speaker': int(self.speaker) if isinstance(self.speaker, (int, float)) and self.speaker != -1 else (self.speaker if isinstance(self.speaker, str) else 1),
             'text': self.text,
             'start': format_time(self.start),
             'end': format_time(self.end),
