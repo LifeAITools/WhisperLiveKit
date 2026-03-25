@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from contextlib import asynccontextmanager
 from typing import List, Optional
@@ -74,11 +75,17 @@ async def websocket_endpoint(websocket: WebSocket):
     # Read per-session options from query parameters
     session_language = websocket.query_params.get("language", None)
     mode = websocket.query_params.get("mode", "full")
+    initial_prompt = websocket.query_params.get("prompt", "")
 
     audio_processor = AudioProcessor(
         transcription_engine=transcription_engine,
         language=session_language,
     )
+
+    # Set initial external_prompt on the OnlineASRProcessor if available
+    if initial_prompt and hasattr(audio_processor, 'transcription') and audio_processor.transcription:
+        audio_processor.transcription.external_prompt = initial_prompt
+        logger.info("Set initial external_prompt: %s", initial_prompt[:80])
     await websocket.accept()
     logger.info(
         "WebSocket connection opened.%s",
@@ -100,13 +107,19 @@ async def websocket_endpoint(websocket: WebSocket):
 
     try:
         while True:
-            message = await websocket.receive_bytes()
-            await audio_processor.process_audio(message)
-    except KeyError as e:
-        if 'bytes' in str(e):
-            logger.warning("Client has closed the connection.")
-        else:
-            logger.error(f"Unexpected KeyError in websocket_endpoint: {e}", exc_info=True)
+            msg = await websocket.receive()
+            if "bytes" in msg and msg["bytes"]:
+                await audio_processor.process_audio(msg["bytes"])
+            elif "text" in msg and msg["text"]:
+                try:
+                    data = json.loads(msg["text"])
+                    if data.get("type") == "update_prompt":
+                        new_prompt = data.get("prompt", "")
+                        if hasattr(audio_processor, 'transcription') and audio_processor.transcription:
+                            audio_processor.transcription.external_prompt = new_prompt
+                            logger.info("Updated external_prompt: %s", new_prompt[:80])
+                except (json.JSONDecodeError, Exception) as e:
+                    logger.warning("Failed to parse control message: %s", e)
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected by client during message receiving loop.")
     except Exception as e:

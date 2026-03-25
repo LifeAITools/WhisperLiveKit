@@ -122,6 +122,7 @@ class OnlineASRProcessor:
         self.logfile = logfile
         self.confidence_validation = asr.confidence_validation
         self.global_time_offset = 0.0
+        self.external_prompt = ""
         self.init()
 
         self.buffer_trimming_way = asr.buffer_trimming
@@ -206,7 +207,12 @@ class OnlineASRProcessor:
             prompt_list.append(word)
         non_prompt_tokens = self.committed[k:]
         context_text = self.asr.sep.join(token.text for token in non_prompt_tokens)
-        return self.asr.sep.join(prompt_list[::-1]), context_text
+        internal_prompt = self.asr.sep.join(prompt_list[::-1])
+        if self.external_prompt:
+            combined = f"{self.external_prompt}. {internal_prompt}" if internal_prompt else self.external_prompt
+        else:
+            combined = internal_prompt
+        return combined, context_text
 
     def get_buffer(self):
         """
