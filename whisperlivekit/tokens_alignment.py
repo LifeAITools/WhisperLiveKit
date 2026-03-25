@@ -197,7 +197,8 @@ class TokensAlignment:
                         intersec = self.intersection_duration(punctuation_segment, diarization_segment)
                         if intersec > max_overlap:
                             max_overlap = intersec
-                            max_overlap_speaker = diarization_segment.speaker + 1
+                            spk = diarization_segment.speaker
+                            max_overlap_speaker = (spk + 1) if isinstance(spk, int) else spk
                     punctuation_segment.speaker = max_overlap_speaker
 
         segments = []
